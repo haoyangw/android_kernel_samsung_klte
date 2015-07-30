@@ -37,6 +37,13 @@
 #define SYNAPTICS_PM_GPIO_STATE_WAKE	0
 #define SYNAPTICS_PM_GPIO_STATE_SLEEP	1
 
+#ifdef CONFIG_BOEFFLA_TOUCH_KEY_CONTROL
+void btkc_touch_start(void);
+void btkc_touch(void);
+
+static int btkc_screen_on = true; // assume screen is on when driver starts
+#endif
+
 struct qpnp_pin_cfg synaptics_int_set[] = {
 	{
 		.mode = 0,
@@ -1755,6 +1762,11 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 						"[%d][P] 0x%02x\n",
 						finger, finger_status);
 #endif
+
+#ifdef CONFIG_BOEFFLA_TOUCH_KEY_CONTROL
+				if (btkc_screen_on)
+					btkc_touch_start();
+#endif	
 			} else {
 				rmi4_data->finger[finger].mcount++;
 			}
@@ -1778,6 +1790,12 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 					finger, finger_status, rmi4_data->finger[finger].mcount,
 					rmi4_data->ic_revision_of_ic, rmi4_data->fw_version_of_ic, rmi4_data->lcd_id, system_rev);
 #endif
+
+#ifdef CONFIG_BOEFFLA_TOUCH_KEY_CONTROL
+			if (btkc_screen_on)
+				btkc_touch();
+#endif
+
 			rmi4_data->finger[finger].mcount = 0;
 		}
 
@@ -1785,7 +1803,7 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 
 	}
 
-		/* Clear BTN_TOUCH when All touch are released  */
+	/* Clear BTN_TOUCH when All touch are released  */
 	if (touch_count == 0) {
 		input_report_key(rmi4_data->input_dev,
 				BTN_TOUCH, 0);
@@ -5682,6 +5700,10 @@ static int synaptics_rmi4_stop_device(struct synaptics_rmi4_data *rmi4_data)
 		goto out;
 	}
 
+#ifdef CONFIG_BOEFFLA_TOUCH_KEY_CONTROL
+	btkc_screen_on = false;
+#endif
+
 	disable_irq(rmi4_data->i2c_client->irq);
 	synaptics_rmi4_free_fingers(rmi4_data);
 	rmi4_data->touch_stopped = true;
@@ -5735,6 +5757,10 @@ static int synaptics_rmi4_start_device(struct synaptics_rmi4_data *rmi4_data)
 	enable_irq(rmi4_data->i2c_client->irq);
 
 	dev_dbg(&rmi4_data->i2c_client->dev, "%s\n", __func__);
+
+#ifdef CONFIG_BOEFFLA_TOUCH_KEY_CONTROL
+	btkc_screen_on = true;
+#endif
 
 out:
 	mutex_unlock(&rmi4_data->rmi4_device_mutex);

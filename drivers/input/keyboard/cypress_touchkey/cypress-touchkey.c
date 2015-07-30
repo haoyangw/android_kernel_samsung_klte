@@ -41,6 +41,10 @@
 #include "issp_extern.h"
 #include <linux/mfd/pm8xxx/pm8921.h>
 
+#ifdef CONFIG_BOEFFLA_TOUCH_KEY_CONTROL
+#include <linux/boeffla_touchkey_control.h>
+#endif
+
 #ifdef USE_OPEN_CLOSE
 static int cypress_input_open(struct input_dev *dev);
 static void cypress_input_close(struct input_dev *dev);
@@ -928,6 +932,11 @@ static irqreturn_t cypress_touchkey_interrupt(int irq, void *dev_id)
 
 		press = menu_press | back_press;
 
+#ifdef CONFIG_BOEFFLA_TOUCH_KEY_CONTROL
+	if (press != 0)
+		btkc_touch();
+#endif
+
 #ifndef CONFIG_SAMSUNG_PRODUCT_SHIP
 		dev_info(&info->client->dev,
 				"%s: %s%s%X, fw_ver: 0x%x, modue_ver: 0x%x\n", __func__,
@@ -953,6 +962,12 @@ static irqreturn_t cypress_touchkey_interrupt(int irq, void *dev_id)
 				"%s: %s. fw_ver=0x%x, module_ver=0x%x \n", __func__,
 				press ? "pressed" : "released", info->ic_fw_ver, info->module_ver);
 #endif
+
+#ifdef CONFIG_BOEFFLA_TOUCH_KEY_CONTROL
+	if (press != 0)
+		btkc_touch();
+#endif
+
 		if (code < 0) {
 			dev_info(&info->client->dev,
 					"%s, not profer interrupt 0x%2X.(release all finger)\n",
@@ -1256,6 +1271,11 @@ static ssize_t cypress_touchkey_led_control(struct device *dev,
 			__func__, data);
 		return size;
 	}
+	
+#ifdef CONFIG_BOEFFLA_TOUCH_KEY_CONTROL
+	if (btkc_block_touchkey_backlight(data))
+		return size;
+#endif	
 
 	if (!info->enabled) {
 		touchled_cmd_reversed = 1;
@@ -2608,6 +2628,11 @@ static int __devinit cypress_touchkey_probe(struct i2c_client *client,
    cypress_power_onoff(info, 0);
 */
 	dev_info(&info->client->dev, "%s: done\n", __func__);
+	
+#ifdef CONFIG_BOEFFLA_TOUCH_KEY_CONTROL
+	btkc_store_handle(info);
+#endif
+	
 	return 0;
 
 err_sysfs_group:
