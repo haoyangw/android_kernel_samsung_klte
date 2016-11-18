@@ -13,7 +13,7 @@
 # ********************************
 
 # kernel specification (hardware; type; target; url)
-KERNEL_SPECS="g900f;samsung;mm60;http://kernel.boeffla.de/sgs5/boeffla-kernel/"
+KERNEL_SPECS="g900f;samsung;mm60;http://kernel.boeffla.de/sgs5/boeffla-kernel/;boeffla-kernel-#VERSION#-Samsung-g900f-anykernel.recovery.zip"
 
 # kernel features 
 # (1=enable-busybox,2=enable-frandom,3=wipe-cache,4=disable-zram-control)
