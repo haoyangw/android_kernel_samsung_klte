@@ -658,7 +658,7 @@ static int mdss_dsi_off(struct mdss_panel_data *pdata)
 
 	mutex_lock(&ctrl_pdata->mutex);
 	panel_info = &ctrl_pdata->panel_data.panel_info;
-	pr_info("%s+: ctrl=%p ndx=%d\n", __func__,
+	pr_info("%s+: ctrl=%pK ndx=%d\n", __func__,
 				ctrl_pdata, ctrl_pdata->ndx);
 
 	if (pinfo->alpm_event && pinfo->alpm_event(CHECK_CURRENT_STATUS))
@@ -1047,7 +1047,7 @@ int mdss_dsi_on(struct mdss_panel_data *pdata)
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
 
-	pr_info("%s+: ctrl=%p ndx=%d\n",
+	pr_info("%s+: ctrl=%pK ndx=%d\n",
 				__func__, ctrl_pdata, ctrl_pdata->ndx);
 
 	pinfo = &pdata->panel_info;
@@ -1306,7 +1306,7 @@ int mdss_dsi_cont_splash_on(struct mdss_panel_data *pdata)
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
 
-	pr_debug("%s+: ctrl=%p ndx=%d\n", __func__,
+	pr_debug("%s+: ctrl=%pK ndx=%d\n", __func__,
 				ctrl_pdata, ctrl_pdata->ndx);
 
 	WARN((ctrl_pdata->ctrl_state & CTRL_STATE_PANEL_INIT),
@@ -1713,6 +1713,13 @@ static int __devinit mdss_dsi_ctrl_probe(struct platform_device *pdev)
 		platform_set_drvdata(pdev, ctrl_pdata);
 	}
 
+	ctrl_pdata->mdss_util = mdss_get_util_intf();
+	if (ctrl_pdata->mdss_util == NULL) {
+		pr_err("Failed to get mdss utility functions\n");
+		rc = -ENODEV;
+		goto error_no_mem;
+	}
+
 	ctrl_name = of_get_property(pdev->dev.of_node, "label", NULL);
 	if (!ctrl_name)
 		pr_info("%s:%d, DSI Ctrl name not specified\n",
@@ -1871,7 +1878,7 @@ int mdss_dsi_retrieve_ctrl_resources(struct platform_device *pdev, int mode,
 		return rc;
 	}
 
-	pr_info("%s: ctrl_base=%p ctrl_size=%x phy_base=%p phy_size=%x\n",
+	pr_info("%s: ctrl_base=%pK ctrl_size=%x phy_base=%pK phy_size=%x\n",
 		__func__, ctrl->ctrl_base, ctrl->reg_size, ctrl->phy_io.base,
 		ctrl->phy_io.len);
 

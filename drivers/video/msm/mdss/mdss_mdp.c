@@ -93,6 +93,7 @@ static DEFINE_SPINLOCK(mdp_lock);
 static DEFINE_MUTEX(mdp_clk_lock);
 static DEFINE_MUTEX(bus_bw_lock);
 static DEFINE_MUTEX(mdp_iommu_lock);
+static DEFINE_MUTEX(mdp_iommu_ref_cnt_lock);
 
 static struct mdss_panel_intf pan_types[] = {
 	{"dsi", MDSS_PANEL_INTF_DSI},
@@ -232,7 +233,7 @@ int mdss_register_irq(struct mdss_hw *hw)
 	if (!mdss_irq_handlers[hw->hw_ndx])
 		mdss_irq_handlers[hw->hw_ndx] = hw;
 	else
-		pr_err("panel %d's irq at %p is already registered\n",
+		pr_err("panel %d's irq at %pK is already registered\n",
 			hw->hw_ndx, hw->irq_handler);
 	spin_unlock_irqrestore(&mdss_lock, irq_flags);
 
@@ -722,12 +723,23 @@ unsigned long mdss_mdp_get_clk_rate(u32 clk_idx)
 	return clk_rate;
 }
 
+void mdss_iommu_lock(void)
+{
+	mutex_lock(&mdp_iommu_lock);
+}
+
+void mdss_iommu_unlock(void)
+{
+	mutex_unlock(&mdp_iommu_lock);
+}
+
 int mdss_iommu_ctrl(int enable)
 {
 	struct mdss_data_type *mdata = mdss_mdp_get_mdata();
 	int rc = 0;
 
-	mutex_lock(&mdp_iommu_lock);
+	//mutex_lock(&mdp_iommu_lock);
+	mutex_lock(&mdp_iommu_ref_cnt_lock);
 	pr_debug("%pS: enable %d mdata->iommu_ref_cnt %d\n",
 		__builtin_return_address(0), enable, mdata->iommu_ref_cnt);
 
@@ -745,7 +757,8 @@ int mdss_iommu_ctrl(int enable)
 			pr_err("unbalanced iommu ref\n");
 		}
 	}
-	mutex_unlock(&mdp_iommu_lock);
+	//mutex_unlock(&mdp_iommu_lock);
+	mutex_unlock(&mdp_iommu_ref_cnt_lock);
 
 	if (IS_ERR_VALUE(rc))
 		return rc;
@@ -958,6 +971,8 @@ int mdss_iommu_attach(struct mdss_data_type *mdata)
 #if defined (CONFIG_FB_MSM_MDSS_DSI_DBG)
 	xlog(__func__, mdata->iommu_attached, 0, 0, 0, 0, 0); 
 #endif
+
+	mutex_lock(&mdp_iommu_lock);
 	if (mdata->iommu_attached) {
 		pr_debug("mdp iommu already attached\n");
 		goto end;
@@ -986,6 +1001,7 @@ int mdss_iommu_attach(struct mdss_data_type *mdata)
 
 	mdata->iommu_attached = true;
 end:
+	mutex_unlock(&mdp_iommu_lock);
 	return rc;
 }
 
@@ -1000,9 +1016,12 @@ int mdss_iommu_dettach(struct mdss_data_type *mdata)
 #if defined (CONFIG_FB_MSM_MDSS_DSI_DBG)
 	xlog(__func__, mdata->iommu_attached, 0, 0, 0, 0, 0); 
 #endif
+
+	mutex_lock(&mdp_iommu_lock);
 	if (!mdata->iommu_attached) {
 		pr_debug("mdp iommu already dettached\n");
-		return 0;
+		//return 0;
+		goto end;
 	}
 
 	for (i = 0; i < MDSS_IOMMU_MAX_DOMAIN; i++) {
@@ -1018,7 +1037,9 @@ int mdss_iommu_dettach(struct mdss_data_type *mdata)
 	}
 
 	mdata->iommu_attached = false;
-
+	MDSS_XLOG(mdata->iommu_attached);
+end:
+	mutex_unlock(&mdp_iommu_lock);
 	return 0;
 }
 
@@ -1218,7 +1239,7 @@ static u32 mdss_mdp_res_init(struct mdss_data_type *mdata)
 
 	mdata->iclient = msm_ion_client_create(-1, mdata->pdev->name);
 	if (IS_ERR_OR_NULL(mdata->iclient)) {
-		pr_err("msm_ion_client_create() return error (%p)\n",
+		pr_err("msm_ion_client_create() return error (%pK)\n",
 				mdata->iclient);
 		mdata->iclient = NULL;
 	}
@@ -1314,6 +1335,17 @@ static int mdss_mdp_register_sysfs(struct mdss_data_type *mdata)
 	return rc;
 }
 
+struct mdss_util_intf mdss_util = {
+	mdss_iommu_lock,
+	mdss_iommu_unlock
+};
+
+struct mdss_util_intf *mdss_get_util_intf()
+{
+	return &mdss_util;
+}
+EXPORT_SYMBOL(mdss_get_util_intf);
+
 static int mdss_mdp_probe(struct platform_device *pdev)
 {
 	struct resource *res;
@@ -1347,6 +1379,13 @@ static int mdss_mdp_probe(struct platform_device *pdev)
 	if (!res) {
 		pr_err("unable to get MDP base address\n");
 		rc = -ENOMEM;
+		goto probe_done;
+	}
+
+	mdss_res->mdss_util = mdss_get_util_intf();
+	if (mdss_res->mdss_util == NULL) {
+		pr_err("Failed to get mdss utility functions\n");
+		rc = -ENODEV;
 		goto probe_done;
 	}
 
@@ -1648,7 +1687,7 @@ static int mdss_mdp_parse_bootarg(struct platform_device *pdev)
 	cmd_len = strlen(cmd_line);
 	disp_idx = strnstr(cmd_line, "mdss_mdp.panel=", cmd_len);
 	if (!disp_idx) {
-		pr_err("%s:%d:cmdline panel not set disp_idx=[%p]\n",
+		pr_err("%s:%d:cmdline panel not set disp_idx=[%pK]\n",
 				__func__, __LINE__, disp_idx);
 		memset(panel_name, 0x00, MDSS_MAX_PANEL_LEN);
 		*intf_type = MDSS_PANEL_INTF_INVALID;
@@ -1668,7 +1707,7 @@ static int mdss_mdp_parse_bootarg(struct platform_device *pdev)
 	}
 
 	if (end_idx <= disp_idx) {
-		pr_err("%s:%d:cmdline pan incorrect end=[%p] disp=[%p]\n",
+		pr_err("%s:%d:cmdline pan incorrect end=[%pK] disp=[%pK]\n",
 			__func__, __LINE__, end_idx, disp_idx);
 		memset(panel_name, 0x00, MDSS_MAX_PANEL_LEN);
 		*intf_type = MDSS_PANEL_INTF_INVALID;
